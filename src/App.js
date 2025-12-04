@@ -26,8 +26,21 @@ import { createTheme, ThemeProvider } from "@mui/material/styles";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import PhotoIcon from "@mui/icons-material/Photo";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
-import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
-import AnalyticsIcon from "@mui/icons-material/Analytics";
+import HomeIcon from "@mui/icons-material/Home";
+import ListAltIcon from "@mui/icons-material/ListAlt";
+import MenuIcon from "@mui/icons-material/Menu";
+import IconButton from "@mui/material/IconButton";
+import Brightness4Icon from "@mui/icons-material/Brightness4";
+import Brightness7Icon from "@mui/icons-material/Brightness7";
+import Drawer from "@mui/material/Drawer";
+import List from "@mui/material/List";
+import ListItem from "@mui/material/ListItem";
+import ListItemButton from "@mui/material/ListItemButton";
+import ListItemIcon from "@mui/material/ListItemIcon";
+import ListItemText from "@mui/material/ListItemText";
+import Divider from "@mui/material/Divider";
+import AppBar from "@mui/material/AppBar";
+import Toolbar from "@mui/material/Toolbar";
  
 function App() {
   const [file, setFile] = useState(null);
@@ -41,21 +54,36 @@ const [duplicatePair, setDuplicatePair] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMessage, setDialogMessage] = useState("");
   const [dialogType, setDialogType] = useState("success");
+  const [currentPage, setCurrentPage] = useState("home");
+  const [receipts, setReceipts] = useState([]);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
  
   const theme = createTheme({
     palette: {
       mode,
       ...(mode === "light"
         ? {
-            background: { default: "#f2faff" },
-            text: { primary: "#003244" }
+            background: { default: "#ffffff", paper: "#f5f5f5" },
+            text: { primary: "#000000" }
           }
         : {
-            background: { default: "#0a0f1c" },
-            text: { primary: "#dffcff" }
+            background: { default: "#121212", paper: "#1e1e1e" },
+            text: { primary: "#ffffff" }
           })
     }
   });
+
+  const drawerWidth = 240;
+
+  // Fetch all receipts
+  const fetchReceipts = async () => {
+    try {
+      const res = await axios.get("http://localhost:8000/receipts");
+      setReceipts(res.data.receipts || []);
+    } catch (err) {
+      console.error("Error fetching receipts:", err);
+    }
+  };
  
   const uploadAndProcess = async () => {
     if (!file) return alert("Please choose a file first.");
@@ -153,77 +181,159 @@ const [duplicatePair, setDuplicatePair] = useState(null);
 };
  
  
-  // ---------------------- UI Rendering ----------------------
-return (
-  <ThemeProvider theme={theme}>
-    <Box
-  sx={{
-    minHeight: "100vh",
-    pt: 1,          // reduced top padding
-    pb: 3,
-    px: 2,
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    background:
-      mode === "light"
-        ? "linear-gradient(to bottom, #e0f7ff, #ffffff)"
-        : "linear-gradient(to bottom, #0a0f1c, #001e2b)",
-    color: theme.palette.text.primary,
-    position: "relative",
-    overflow: "hidden"
-  }}
->
- 
- 
-      {/* Background Shapes */}
-      <Box
-        sx={{
-          position: "absolute",
-          width: "200%",
-          height: "200%",
-          top: "-50%",
-          left: "-50%",
-          background:
-            mode === "light"
-              ? "radial-gradient(circle, #a0f0ff 10%, transparent 70%)"
-              : "radial-gradient(circle, #12a38b 15%, transparent 70%)",
-          transform: "rotate(45deg)",
-          opacity: 0.05,
-          pointerEvents: "none"
-        }}
-      />
- 
-      {/* Theme Toggle */}
-      <Box sx={{ width: "100%", maxWidth: 900, display: "flex", justifyContent: "flex-end", mb: 1 }}>
-        <Typography sx={{ mr: 1 }}>{mode === "light" ? "Light Mode" : "Dark Mode"}</Typography>
-        <Switch checked={mode === "dark"} onChange={() => setMode(mode === "light" ? "dark" : "light")} />
-      </Box>
- 
-      {/* Header */}
-      <Box sx={{ textAlign: "center", mb: 2 }}>
-        <Typography variant="h3" sx={{ fontWeight: "bold", mb: 1 }}>
-          Smart Expense Receipt Categorizer
+  // Render different pages
+  const renderContent = () => {
+    switch (currentPage) {
+      case "home":
+        return renderHomePage();
+      case "upload":
+        return renderUploadPage();
+      case "receipts":
+        return renderReceiptsPage();
+      default:
+        return renderHomePage();
+    }
+  };
+
+  const renderHomePage = () => (
+    <Box sx={{ p: 4 }}>
+      <Typography variant="h3" sx={{ fontWeight: "bold", mb: 3 }}>
+        Welcome to Smart Expense Receipt Categorizer
+      </Typography>
+      
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={4}>
+          <Paper elevation={2} sx={{ p: 3, textAlign: "center", borderRadius: 2 }}>
+            <CloudUploadIcon sx={{ fontSize: 60, color: "#1976d2", mb: 2 }} />
+            <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>
+              Upload Receipts
+            </Typography>
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              Upload and process your receipts with AI-powered categorization
+            </Typography>
+            <Button variant="contained" onClick={() => setCurrentPage("upload")}>
+              Go to Upload
+            </Button>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} md={4}>
+          <Paper elevation={2} sx={{ p: 3, textAlign: "center", borderRadius: 2 }}>
+            <ListAltIcon sx={{ fontSize: 60, color: "#2e7d32", mb: 2 }} />
+            <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>
+              View Receipts
+            </Typography>
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              Browse and manage all your processed receipts
+            </Typography>
+            <Button variant="contained" color="success" onClick={() => { setCurrentPage("receipts"); fetchReceipts(); }}>
+              View All
+            </Button>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} md={4}>
+          <Paper elevation={2} sx={{ p: 3, textAlign: "center", borderRadius: 2 }}>
+            <ReceiptLongIcon sx={{ fontSize: 60, color: "#ed6c02", mb: 2 }} />
+            <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>
+              Duplicate Detection
+            </Typography>
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              Automatic fraud detection and duplicate receipt identification
+            </Typography>
+          </Paper>
+        </Grid>
+      </Grid>
+
+      <Paper elevation={2} sx={{ p: 3, mt: 4, borderRadius: 2 }}>
+        <Typography variant="h5" sx={{ fontWeight: "bold", mb: 2 }}>
+          How It Works
         </Typography>
-        <Typography variant="h6" sx={{ opacity: 0.8 }}>
-          Upload your receipts and see them categorized instantly.
+        <Stack spacing={2}>
+          <Box sx={{ display: "flex", alignItems: "start", gap: 2 }}>
+            <Typography sx={{ fontWeight: "bold", fontSize: 20 }}>1.</Typography>
+            <Box>
+              <Typography variant="body1" sx={{ fontWeight: "bold" }}>Upload Your Receipt</Typography>
+              <Typography variant="body2">Upload an image or PDF of your receipt</Typography>
+            </Box>
+          </Box>
+          <Box sx={{ display: "flex", alignItems: "start", gap: 2 }}>
+            <Typography sx={{ fontWeight: "bold", fontSize: 20 }}>2.</Typography>
+            <Box>
+              <Typography variant="body1" sx={{ fontWeight: "bold" }}>AI Processing</Typography>
+              <Typography variant="body2">Our AI extracts and categorizes the receipt data</Typography>
+            </Box>
+          </Box>
+          <Box sx={{ display: "flex", alignItems: "start", gap: 2 }}>
+            <Typography sx={{ fontWeight: "bold", fontSize: 20 }}>3.</Typography>
+            <Box>
+              <Typography variant="body1" sx={{ fontWeight: "bold" }}>Review & Approve</Typography>
+              <Typography variant="body2">Review the results and manage duplicates</Typography>
+            </Box>
+          </Box>
+        </Stack>
+      </Paper>
+    </Box>
+  );
+
+  const renderReceiptsPage = () => (
+    <Box sx={{ p: 4 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+        <Typography variant="h4" sx={{ fontWeight: "bold" }}>
+          All Receipts
         </Typography>
-        <ReceiptLongIcon sx={{ fontSize: 70, mt: 2, color: mode === "dark" ? "#12a38b" : "#00b4db" }} />
+        <Button variant="contained" onClick={fetchReceipts} startIcon={<ListAltIcon />}>
+          Refresh
+        </Button>
       </Box>
+
+      {receipts.length === 0 ? (
+        <Paper elevation={2} sx={{ p: 4, textAlign: "center", borderRadius: 2 }}>
+          <Typography variant="h6" sx={{ mb: 2 }}>No receipts found</Typography>
+          <Typography variant="body2" sx={{ mb: 3 }}>Upload your first receipt to get started</Typography>
+          <Button variant="contained" onClick={() => setCurrentPage("upload")}>
+            Upload Receipt
+          </Button>
+        </Paper>
+      ) : (
+        <Grid container spacing={2}>
+          {receipts.map((receipt) => (
+            <Grid item xs={12} key={receipt.id}>
+              <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={8}>
+                    <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>
+                      {receipt.merchant}
+                    </Typography>
+                    <Stack direction="row" spacing={3}>
+                      <Typography variant="body2">Date: {receipt.date}</Typography>
+                      <Typography variant="body2">Total: {receipt.total}</Typography>
+                      <Typography variant="body2">Category: {receipt.category}</Typography>
+                    </Stack>
+                  </Grid>
+                  <Grid item xs={12} md={4} sx={{ display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
+                    {receipt.duplicate && (
+                      <Typography variant="body2" sx={{ color: "orange", fontWeight: "bold" }}>
+                        ⚠️ Duplicate
+                      </Typography>
+                    )}
+                  </Grid>
+                </Grid>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+    </Box>
+  );
+
+  const renderUploadPage = () => (
+    <Box sx={{ p: 4 }}>
+      <Typography variant="h4" sx={{ fontWeight: "bold", mb: 3 }}>
+        Upload Receipt
+      </Typography>
  
-      {/* Upload Section */}
-      <Box
-        sx={{
-          width: "100%",
-          maxWidth: 900,
-          p: 4,
-          mb: 3,
-          borderRadius: 4,
-          background: mode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
-          backdropFilter: "blur(18px)",
-          border: "1px solid rgba(255,255,255,0.15)"
-        }}
-      >
+      <Paper elevation={2} sx={{ p: 4, mb: 3, borderRadius: 2 }}>
         <Typography variant="h5" sx={{ fontWeight: 600, mb: 2 }}>
           Upload Image / PDF
         </Typography>
@@ -287,20 +397,18 @@ return (
             />
           </Box>
         )}
-      </Box>
+      </Paper>
  
-      {/* Duplicate Warning Banner */}
       {duplicateInfo?.duplicate && (
-        <Box
+        <Paper
+          elevation={2}
           sx={{
-            background: "rgba(255,200,0,0.2)",
+            backgroundColor: "#fff3cd",
             p: 2,
             mb: 2,
             borderRadius: 2,
-            border: "1px solid orange",
-            textAlign: "center",
-            maxWidth: 900,
-            width: "100%"
+            border: "1px solid #ffc107",
+            textAlign: "center"
           }}
         >
           <Typography variant="h6" sx={{ color: "orange" }}>
@@ -310,7 +418,7 @@ return (
           <Typography sx={{ mt: 1 }}>
             This seems similar to receipt ID: <b>{duplicateInfo.duplicate_of}</b>
           </Typography>
-        </Box>
+        </Paper>
       )}
  
       {/* Admin Action Buttons */}
@@ -328,19 +436,8 @@ return (
  
 
  
-      {/* Parsed Result Panel */}
       {result && (
-        <Box
-          sx={{
-            width: "100%",
-            maxWidth: 900,
-            p: 4,
-            borderRadius: 4,
-            background: mode === "dark" ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)",
-            backdropFilter: "blur(20px)",
-            mb: 4
-          }}
-        >
+        <Paper elevation={2} sx={{ p: 4, borderRadius: 2, mb: 4 }}>
           <Typography variant="h4" sx={{ mb: 2 }}>
             Parsed Result
           </Typography>
@@ -379,22 +476,11 @@ return (
               {JSON.stringify(result.deepseek_raw, null, 2)}
             </pre>
           </Paper>
-        </Box>
+        </Paper>
       )}
  
-      {/* Full Duplicate Pair Comparison */}
       {duplicatePair && (
-        <Box
-          sx={{
-            width: "100%",
-            maxWidth: 900,
-            mt: 3,
-            p: 3,
-            borderRadius: 3,
-            background: "rgba(255,255,255,0.08)",
-            border: "1px solid rgba(255,255,255,0.2)"
-          }}
-        >
+        <Paper elevation={2} sx={{ mt: 3, p: 3, borderRadius: 2 }}>
           <Typography variant="h4" sx={{ mb: 2, fontWeight: "bold" }}>
             🔍 Duplicate Receipt Review
           </Typography>
@@ -452,17 +538,127 @@ return (
               </Paper>
             </Grid>
           </Grid>
-        </Box>
+        </Paper>
       )}
- 
+    </Box>
+  );
+
+  // ---------------------- UI Rendering ----------------------
+  return (
+    <ThemeProvider theme={theme}>
+      <Box sx={{ display: "flex", minHeight: "100vh" }}>
+        {/* Top AppBar */}
+        <AppBar
+          position="fixed"
+          sx={{
+            zIndex: (theme) => theme.zIndex.drawer + 1,
+            backgroundColor: theme.palette.background.paper,
+            color: theme.palette.text.primary,
+            boxShadow: 1
+          }}
+        >
+          <Toolbar>
+            <IconButton
+              color="inherit"
+              edge="start"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              sx={{ mr: 2 }}
+            >
+              <MenuIcon />
+            </IconButton>
+            <ReceiptLongIcon sx={{ fontSize: 28, color: "#1976d2", mr: 1 }} />
+            <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: "bold" }}>
+              Receipt App
+            </Typography>
+            <IconButton onClick={() => setMode(mode === "light" ? "dark" : "light")} color="inherit">
+              {mode === "dark" ? <Brightness7Icon /> : <Brightness4Icon />}
+            </IconButton>
+          </Toolbar>
+        </AppBar>
+
+        {/* Sidebar */}
+        <Drawer
+          variant="persistent"
+          open={sidebarOpen}
+          sx={{
+            width: drawerWidth,
+            flexShrink: 0,
+            "& .MuiDrawer-paper": {
+              width: drawerWidth,
+              boxSizing: "border-box",
+              backgroundColor: theme.palette.background.paper
+            }
+          }}
+        >
+          <Toolbar />
+          <Box sx={{ overflow: "auto" }}>
+            <List>
+              <ListItem disablePadding>
+                <ListItemButton
+                  selected={currentPage === "home"}
+                  onClick={() => setCurrentPage("home")}
+                >
+                  <ListItemIcon>
+                    <HomeIcon />
+                  </ListItemIcon>
+                  <ListItemText primary="Home" />
+                </ListItemButton>
+              </ListItem>
+              <ListItem disablePadding>
+                <ListItemButton
+                  selected={currentPage === "upload"}
+                  onClick={() => setCurrentPage("upload")}
+                >
+                  <ListItemIcon>
+                    <CloudUploadIcon />
+                  </ListItemIcon>
+                  <ListItemText primary="Upload" />
+                </ListItemButton>
+              </ListItem>
+              <ListItem disablePadding>
+                <ListItemButton
+                  selected={currentPage === "receipts"}
+                  onClick={() => { setCurrentPage("receipts"); fetchReceipts(); }}
+                >
+                  <ListItemIcon>
+                    <ListAltIcon />
+                  </ListItemIcon>
+                  <ListItemText primary="Receipts" />
+                </ListItemButton>
+              </ListItem>
+            </List>
+          </Box>
+        </Drawer>
+
+        {/* Main Content */}
+        <Box
+          component="main"
+          sx={{
+            flexGrow: 1,
+            backgroundColor: theme.palette.background.default,
+            minHeight: "100vh",
+            marginLeft: sidebarOpen ? 0 : `-${drawerWidth}px`,
+            transition: theme.transitions.create("margin", {
+              easing: theme.transitions.easing.sharp,
+              duration: theme.transitions.duration.leavingScreen
+            })
+          }}
+        >
+          <Toolbar />
+          {renderContent()}
+        </Box>
+      </Box>
+
       {/* Dialog for Approve/Reject Messages */}
       <Dialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
-        PaperProps={{
-          sx: {
-            borderRadius: 3,
-            minWidth: 400
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: 3,
+              minWidth: 400
+            }
           }
         }}
       >
@@ -478,11 +674,8 @@ return (
           </Button>
         </DialogActions>
       </Dialog>
- 
-    </Box>
-  </ThemeProvider>
-);
- 
+    </ThemeProvider>
+  );
 }
- 
+
 export default App;
