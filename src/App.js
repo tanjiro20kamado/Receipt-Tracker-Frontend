@@ -30,6 +30,7 @@ import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import HomeIcon from "@mui/icons-material/Home";
 import ListAltIcon from "@mui/icons-material/ListAlt";
 import MenuIcon from "@mui/icons-material/Menu";
+import BarChartIcon from "@mui/icons-material/BarChart";
 import IconButton from "@mui/material/IconButton";
 import Brightness4Icon from "@mui/icons-material/Brightness4";
 import Brightness7Icon from "@mui/icons-material/Brightness7";
@@ -58,6 +59,8 @@ const [duplicatePair, setDuplicatePair] = useState(null);
   const [currentPage, setCurrentPage] = useState("home");
   const [receipts, setReceipts] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [analytics, setAnalytics] = useState(null);
+  const [currentReceiptId, setCurrentReceiptId] = useState(null);
  
   const theme = createTheme({
     palette: {
@@ -85,6 +88,67 @@ const [duplicatePair, setDuplicatePair] = useState(null);
       console.error("Error fetching receipts:", err);
     }
   };
+
+  // Fetch analytics data
+  const fetchAnalytics = async () => {
+    try {
+      // Fetch basic receipts data
+      const res = await axios.get("http://localhost:8000/receipts/all");
+      const receiptsData = res.data.data || [];
+      
+      console.log("Fetched receipts for analytics:", receiptsData);
+      
+      // Calculate category spending
+      const categorySpending = {};
+      let totalSpending = 0;
+      
+      receiptsData.forEach(receipt => {
+        const category = receipt.category || "Uncategorized";
+        const amount = parseFloat(receipt.total) || 0;
+        
+        if (!categorySpending[category]) {
+          categorySpending[category] = 0;
+        }
+        categorySpending[category] += amount;
+        totalSpending += amount;
+      });
+      
+      // Convert to array for chart
+      const chartData = Object.entries(categorySpending).map(([category, amount]) => ({
+        category,
+        amount,
+        percentage: ((amount / totalSpending) * 100).toFixed(1)
+      })).sort((a, b) => b.amount - a.amount);
+      
+      // Fetch AI insights
+      let aiInsights = null;
+      try {
+        const aiRes = await axios.get("http://localhost:8000/analytics/spending");
+        aiInsights = aiRes.data.ai_insights;
+        console.log("AI Insights:", aiInsights);
+      } catch (aiErr) {
+        console.error("Error fetching AI insights:", aiErr);
+      }
+      
+      console.log("Analytics data:", {
+        categorySpending: chartData,
+        totalSpending,
+        totalReceipts: receiptsData.length,
+        topCategory: chartData[0],
+        aiInsights
+      });
+      
+      setAnalytics({
+        categorySpending: chartData,
+        totalSpending,
+        totalReceipts: receiptsData.length,
+        topCategory: chartData[0],
+        aiInsights
+      });
+    } catch (err) {
+      console.error("Error fetching analytics:", err);
+    }
+  };
  
   const uploadAndProcess = async () => {
     if (!file) return alert("Please choose a file first.");
@@ -104,10 +168,12 @@ const [duplicatePair, setDuplicatePair] = useState(null);
         onUploadProgress: (p) => setProgress(Math.round((p.loaded * 100) / p.total))
       });
       setResult(res.data.result || res.data);
+      setCurrentReceiptId(res.data.id);
       
       console.log("Upload response:", res.data);
       console.log("Is duplicate?", res.data.duplicate);
       console.log("Duplicate_of:", res.data.duplicate_of);
+      console.log("Receipt ID:", res.data.id);
       
       // Store duplicate metadata
       setDuplicateInfo({
@@ -140,7 +206,7 @@ const [duplicatePair, setDuplicatePair] = useState(null);
  
   // ---------------------- Admin Approve / Reject -----------------------
  const approveDuplicate = async () => {
-  if (!result?.id) {
+  if (!currentReceiptId) {
     setDialogMessage("No receipt ID found.");
     setDialogType("error");
     setDialogOpen(true);
@@ -148,7 +214,7 @@ const [duplicatePair, setDuplicatePair] = useState(null);
   }
  
   try {
-    const res = await axios.post(`http://localhost:8000/approve/${result.id}`);
+    const res = await axios.post(`http://localhost:8000/approve/${currentReceiptId}`);
     setDialogMessage(res.data.message || "Receipt approved successfully!");
     setDialogType("success");
     setDialogOpen(true);
@@ -165,7 +231,7 @@ const [duplicatePair, setDuplicatePair] = useState(null);
  
  
  const rejectDuplicate = async () => {
-  if (!result?.id) {
+  if (!currentReceiptId) {
     setDialogMessage("No receipt ID found.");
     setDialogType("error");
     setDialogOpen(true);
@@ -173,7 +239,7 @@ const [duplicatePair, setDuplicatePair] = useState(null);
   }
  
   try {
-    const res = await axios.post(`http://localhost:8000/reject/${result.id}`);
+    const res = await axios.post(`http://localhost:8000/reject/${currentReceiptId}`);
     setDialogMessage(res.data.message || "Receipt rejected as fraud!");
     setDialogType("error");
     setDialogOpen(true);
@@ -198,9 +264,279 @@ const [duplicatePair, setDuplicatePair] = useState(null);
         return renderUploadPage();
       case "receipts":
         return renderReceiptsPage();
+      case "analytics":
+        return renderAnalyticsPage();
       default:
         return renderHomePage();
     }
+  };
+
+  const renderAnalyticsPage = () => {
+    if (!analytics) {
+      fetchAnalytics();
+      return (
+        <Box sx={{ p: 4, display: "flex", justifyContent: "center", alignItems: "center", minHeight: "50vh" }}>
+          <CircularProgress />
+        </Box>
+      );
+    }
+
+    const colors = ["#26c6da", "#42a5f5", "#66bb6a", "#ffa726", "#ef5350", "#ab47bc", "#78909c", "#ffca28"];
+    const avgPerReceipt = analytics.totalReceipts > 0 ? analytics.totalSpending / analytics.totalReceipts : 0;
+
+    return (
+      <Box sx={{ p: 4, maxWidth: 1000, mx: "auto" }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 4 }}>
+          <BarChartIcon sx={{ fontSize: 40 }} />
+          <Typography variant="h4" sx={{ fontWeight: "bold" }}>
+            Expense Analytics
+          </Typography>
+        </Box>
+
+        {/* Summary Cards */}
+        <Grid container spacing={2} sx={{ mb: 4 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2, border: "1px solid #e0e0e0" }}>
+              <Typography variant="body2" sx={{ color: "text.secondary", mb: 0.5 }}>
+                Total Spend
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: "bold" }}>
+                ₹ {analytics.totalSpending.toFixed(2)}
+              </Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2, border: "1px solid #e0e0e0" }}>
+              <Typography variant="body2" sx={{ color: "text.secondary", mb: 0.5 }}>
+                Total Receipts
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: "bold" }}>
+                {analytics.totalReceipts}
+              </Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2, border: "1px solid #e0e0e0" }}>
+              <Typography variant="body2" sx={{ color: "text.secondary", mb: 0.5 }}>
+                Avg / Receipt
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: "bold" }}>
+                ₹ {avgPerReceipt.toFixed(2)}
+              </Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2, border: "1px solid #e0e0e0" }}>
+              <Typography variant="body2" sx={{ color: "text.secondary", mb: 0.5 }}>
+                Top Category
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: "bold" }}>
+                {analytics.topCategory?.category}
+              </Typography>
+            </Paper>
+          </Grid>
+        </Grid>
+
+        {/* Pie Chart */}
+        <Paper elevation={0} sx={{ p: 4, borderRadius: 2, border: "1px solid #e0e0e0" }}>
+          {/* Legend */}
+          <Box sx={{ display: "flex", justifyContent: "center", gap: 3, mb: 3, flexWrap: "wrap" }}>
+            {analytics.categorySpending.map((item, index) => (
+              <Box key={index} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <Box sx={{ width: 14, height: 14, backgroundColor: colors[index % colors.length] }} />
+                <Typography variant="body2">{item.category}</Typography>
+              </Box>
+            ))}
+          </Box>
+
+          {/* Pie Chart */}
+          <Box sx={{ display: "flex", justifyContent: "center", mb: 4 }}>
+            <svg width="500" height="450" viewBox="0 0 500 450">
+              {analytics.categorySpending.map((item, index) => {
+                const startAngle = analytics.categorySpending.slice(0, index).reduce((sum, cat) => sum + (cat.amount / analytics.totalSpending) * 360, 0);
+                const angle = (item.amount / analytics.totalSpending) * 360;
+                const endAngle = startAngle + angle;
+                
+                const startRad = (startAngle - 90) * Math.PI / 180;
+                const endRad = (endAngle - 90) * Math.PI / 180;
+                
+                const x1 = 250 + 130 * Math.cos(startRad);
+                const y1 = 200 + 130 * Math.sin(startRad);
+                const x2 = 250 + 130 * Math.cos(endRad);
+                const y2 = 200 + 130 * Math.sin(endRad);
+                
+                const largeArc = angle > 180 ? 1 : 0;
+                
+                // Calculate label position (outside the circle with line)
+                const midAngle = (startAngle + endAngle) / 2;
+                const midRad = (midAngle - 90) * Math.PI / 180;
+                const lineStartX = 250 + 135 * Math.cos(midRad);
+                const lineStartY = 200 + 135 * Math.sin(midRad);
+                const lineEndX = 250 + 170 * Math.cos(midRad);
+                const lineEndY = 200 + 170 * Math.sin(midRad);
+                const labelX = 250 + 185 * Math.cos(midRad);
+                const labelY = 200 + 185 * Math.sin(midRad);
+                
+                return (
+                  <g key={index}>
+                    {/* Pie slice */}
+                    <path
+                      d={analytics.categorySpending.length === 1 
+                        ? `M 250 200 m -130, 0 a 130,130 0 1,0 260,0 a 130,130 0 1,0 -260,0`
+                        : `M 250 200 L ${x1} ${y1} A 130 130 0 ${largeArc} 1 ${x2} ${y2} Z`
+                      }
+                      fill={colors[index % colors.length]}
+                      stroke="#fff"
+                      strokeWidth="3"
+                    />
+                    {/* Line from slice to label */}
+                    <line 
+                      x1={lineStartX} 
+                      y1={lineStartY} 
+                      x2={lineEndX} 
+                      y2={lineEndY} 
+                      stroke={theme.palette.text.primary}
+                      strokeWidth="1.5"
+                    />
+                    {/* Percentage label */}
+                    <text 
+                      x={labelX} 
+                      y={labelY} 
+                      textAnchor="middle" 
+                      fontSize="16" 
+                      fontWeight="bold" 
+                      fill={theme.palette.text.primary}
+                    >
+                      {item.percentage}%
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+          </Box>
+
+          {/* Category List */}
+          <Box sx={{ maxWidth: 700, mx: "auto" }}>
+            {analytics.categorySpending.map((item, index) => (
+              <Box 
+                key={index} 
+                sx={{ 
+                  display: "flex", 
+                  justifyContent: "space-between", 
+                  alignItems: "center",
+                  py: 2.5,
+                  borderBottom: index < analytics.categorySpending.length - 1 ? "1px solid #e0e0e0" : "none"
+                }}
+              >
+                <Typography variant="body1">{item.category}</Typography>
+                <Box sx={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <Typography variant="body1">
+                    ₹ {item.amount.toFixed(2)}
+                  </Typography>
+                  <Typography variant="body1" sx={{ minWidth: 60, textAlign: "right" }}>
+                    {item.percentage}%
+                  </Typography>
+                </Box>
+              </Box>
+            ))}
+          </Box>
+        </Paper>
+
+        {/* AI Insights Section */}
+        {analytics.aiInsights && (
+          <Box sx={{ mt: 4 }}>
+            <Typography variant="h5" sx={{ fontWeight: "bold", mb: 3 }}>
+              💡 AI-Powered Insights
+            </Typography>
+
+            {analytics.aiInsights.error ? (
+              <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2, border: "1px solid #ffeb3b", backgroundColor: "#fffde7" }}>
+                <Typography variant="body1" sx={{ color: "#f57c00" }}>
+                  ⚠️ AI insights are currently unavailable. Please check your DeepSeek API configuration.
+                </Typography>
+                <Typography variant="body2" sx={{ color: "text.secondary", mt: 1 }}>
+                  Error: {analytics.aiInsights.error}
+                </Typography>
+              </Paper>
+            ) : (
+              <>
+                {/* Overall Insights */}
+                {analytics.aiInsights.insights && analytics.aiInsights.insights !== "Unable to generate AI insights" && (
+                  <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2, border: "1px solid #e0e0e0", backgroundColor: "#f0f7ff" }}>
+                    <Typography variant="body1" sx={{ lineHeight: 1.8 }}>
+                      {analytics.aiInsights.insights}
+                    </Typography>
+                  </Paper>
+                )}
+
+            <Grid container spacing={3}>
+              {/* Top Categories */}
+              {analytics.aiInsights.top_categories && analytics.aiInsights.top_categories.length > 0 && (
+                <Grid item xs={12} md={6} lg={4}>
+                  <Paper elevation={0} sx={{ p: 3, borderRadius: 2, border: "1px solid #e0e0e0", height: "100%" }}>
+                    <Typography variant="h6" sx={{ fontWeight: "bold", mb: 2, color: "#1976d2" }}>
+                      📊 Top Spending Areas
+                    </Typography>
+                    <Stack spacing={2}>
+                      {analytics.aiInsights.top_categories.map((item, index) => (
+                        <Box key={index}>
+                          <Typography variant="body2" sx={{ fontWeight: "bold" }}>
+                            {index + 1}. {typeof item === 'string' ? item : item.category || item}
+                          </Typography>
+                          {typeof item === 'object' && item.amount && (
+                            <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                              ₹{item.amount}
+                            </Typography>
+                          )}
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Paper>
+                </Grid>
+              )}
+
+              {/* Concerns */}
+              {analytics.aiInsights.concerns && analytics.aiInsights.concerns.length > 0 && (
+                <Grid item xs={12} md={6} lg={4}>
+                  <Paper elevation={0} sx={{ p: 3, borderRadius: 2, border: "1px solid #e0e0e0", height: "100%" }}>
+                    <Typography variant="h6" sx={{ fontWeight: "bold", mb: 2, color: "#ed6c02" }}>
+                      ⚠️ Areas of Concern
+                    </Typography>
+                    <Stack spacing={1.5}>
+                      {analytics.aiInsights.concerns.map((concern, index) => (
+                        <Typography key={index} variant="body2" sx={{ lineHeight: 1.6 }}>
+                          • {concern}
+                        </Typography>
+                      ))}
+                    </Stack>
+                  </Paper>
+                </Grid>
+              )}
+
+              {/* Suggestions */}
+              {analytics.aiInsights.suggestions && analytics.aiInsights.suggestions.length > 0 && (
+                <Grid item xs={12} md={6} lg={4}>
+                  <Paper elevation={0} sx={{ p: 3, borderRadius: 2, border: "1px solid #e0e0e0", height: "100%" }}>
+                    <Typography variant="h6" sx={{ fontWeight: "bold", mb: 2, color: "#2e7d32" }}>
+                      💰 Cost-Saving Tips
+                    </Typography>
+                    <Stack spacing={1.5}>
+                      {analytics.aiInsights.suggestions.map((suggestion, index) => (
+                        <Typography key={index} variant="body2" sx={{ lineHeight: 1.6 }}>
+                          • {suggestion}
+                        </Typography>
+                      ))}
+                    </Stack>
+                  </Paper>
+                </Grid>
+              )}
+            </Grid>
+              </>
+            )}
+          </Box>
+        )}
+      </Box>
+    );
   };
 
   const renderHomePage = () => (
@@ -316,6 +652,7 @@ const [duplicatePair, setDuplicatePair] = useState(null);
                 <TableCell sx={{ fontWeight: "bold" }}>Payment</TableCell>
                 <TableCell sx={{ fontWeight: "bold" }}>Status</TableCell>
                 <TableCell sx={{ fontWeight: "bold" }}>Flags</TableCell>
+                <TableCell sx={{ fontWeight: "bold" }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -384,6 +721,52 @@ const [duplicatePair, setDuplicatePair] = useState(null);
                       <Typography variant="caption" sx={{ color: "error.main" }}>
                         {receipt.fraud_flags.join(", ")}
                       </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {receipt.status === "Pending Review" && (
+                      <Stack direction="row" spacing={1}>
+                        <Button 
+                          size="small" 
+                          variant="contained" 
+                          color="success"
+                          onClick={async () => {
+                            try {
+                              const res = await axios.post(`http://localhost:8000/approve/${receipt.id}`);
+                              setDialogMessage(res.data.message || "Receipt approved!");
+                              setDialogType("success");
+                              setDialogOpen(true);
+                              fetchReceipts(); // Refresh the list
+                            } catch (err) {
+                              setDialogMessage("Error: " + (err.response?.data?.detail || err.message));
+                              setDialogType("error");
+                              setDialogOpen(true);
+                            }
+                          }}
+                        >
+                          Approve
+                        </Button>
+                        <Button 
+                          size="small" 
+                          variant="contained" 
+                          color="error"
+                          onClick={async () => {
+                            try {
+                              const res = await axios.post(`http://localhost:8000/reject/${receipt.id}`);
+                              setDialogMessage(res.data.message || "Receipt rejected!");
+                              setDialogType("error");
+                              setDialogOpen(true);
+                              fetchReceipts(); // Refresh the list
+                            } catch (err) {
+                              setDialogMessage("Error: " + (err.response?.data?.detail || err.message));
+                              setDialogType("error");
+                              setDialogOpen(true);
+                            }
+                          }}
+                        >
+                          Reject
+                        </Button>
+                      </Stack>
                     )}
                   </TableCell>
                 </TableRow>
@@ -519,14 +902,51 @@ const [duplicatePair, setDuplicatePair] = useState(null);
                   Total: result.total,
                   Category: result.category,
                   Payment: result.payment_method,
-                  Duplicate: duplicateInfo?.duplicate ? "Yes" : "No",
-                  "Validation Flags": (result.fraud_flags || []).join(", ")
+                  Duplicate: duplicateInfo?.duplicate ? "Yes" : "No"
                 }).map(([k, v]) => (
                   <TableRow key={k}>
                     <TableCell sx={{ fontWeight: 600 }}>{k}</TableCell>
                     <TableCell>{v}</TableCell>
                   </TableRow>
                 ))}
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600 }}>GST Status</TableCell>
+                  <TableCell>
+                    {result.gst_verification ? (
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          color: result.gst_verification.valid === true ? "success.main" : 
+                                 result.gst_verification.valid === false ? "error.main" : "text.secondary"
+                        }}
+                      >
+                        {result.gst_verification.valid === true && "✓ Valid GST"}
+                        {result.gst_verification.valid === false && "✗ Invalid GST"}
+                        {result.gst_verification.valid === null && result.gst_verification.message}
+                      </Typography>
+                    ) : (
+                      <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                        No GST information
+                      </Typography>
+                    )}
+                  </TableCell>
+                </TableRow>
+                {result.gst_number_extracted && (
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>GST Number</TableCell>
+                    <TableCell>{result.gst_number_extracted}</TableCell>
+                  </TableRow>
+                )}
+                {result.fraud_flags && result.fraud_flags.length > 0 && (
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>Fraud Flags</TableCell>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ color: "error.main" }}>
+                        {result.fraud_flags.join(", ")}
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </Paper>
@@ -708,6 +1128,17 @@ const [duplicatePair, setDuplicatePair] = useState(null);
                     <ListAltIcon />
                   </ListItemIcon>
                   <ListItemText primary="Receipts" />
+                </ListItemButton>
+              </ListItem>
+              <ListItem disablePadding>
+                <ListItemButton
+                  selected={currentPage === "analytics"}
+                  onClick={() => { setCurrentPage("analytics"); setAnalytics(null); }}
+                >
+                  <ListItemIcon>
+                    <BarChartIcon />
+                  </ListItemIcon>
+                  <ListItemText primary="Analytics" />
                 </ListItemButton>
               </ListItem>
             </List>
