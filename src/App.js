@@ -9,6 +9,7 @@ import {
   TableRow,
   TableCell,
   TableBody,
+  TableHead,
   Paper,
   CircularProgress,
   Stack,
@@ -78,8 +79,8 @@ const [duplicatePair, setDuplicatePair] = useState(null);
   // Fetch all receipts
   const fetchReceipts = async () => {
     try {
-      const res = await axios.get("http://localhost:8000/receipts");
-      setReceipts(res.data.receipts || []);
+      const res = await axios.get("http://localhost:8000/receipts/all");
+      setReceipts(res.data.data || []);
     } catch (err) {
       console.error("Error fetching receipts:", err);
     }
@@ -102,20 +103,27 @@ const [duplicatePair, setDuplicatePair] = useState(null);
         timeout: 120000,
         onUploadProgress: (p) => setProgress(Math.round((p.loaded * 100) / p.total))
       });
-      setResult(res.data.result);
-      if (res.data.duplicate && res.data.result.duplicate_of) {
-    const pair = await axios.get(
-      `http://localhost:8000/duplicate-pair/${res.data.result.id}`
-    );
-    setDuplicatePair(pair.data);
-}
- 
+      setResult(res.data.result || res.data);
+      
+      console.log("Upload response:", res.data);
+      console.log("Is duplicate?", res.data.duplicate);
+      console.log("Duplicate_of:", res.data.duplicate_of);
+      
       // Store duplicate metadata
       setDuplicateInfo({
         duplicate: res.data.duplicate,
         duplicate_of: res.data.duplicate_of,
         status: res.data.status
       });
+      
+      if (res.data.duplicate && res.data.duplicate_of) {
+        console.log("Fetching duplicate pair for ID:", res.data.id);
+        const pair = await axios.get(
+          `http://localhost:8000/duplicate-pair/${res.data.id}`
+        );
+        console.log("Duplicate pair data:", pair.data);
+        setDuplicatePair(pair.data);
+      }
  
       // If duplicate fetch original receipt
       if (res.data.duplicate && res.data.duplicate_of) {
@@ -280,7 +288,7 @@ const [duplicatePair, setDuplicatePair] = useState(null);
     <Box sx={{ p: 4 }}>
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
         <Typography variant="h4" sx={{ fontWeight: "bold" }}>
-          All Receipts
+          All Receipts ({receipts.length})
         </Typography>
         <Button variant="contained" onClick={fetchReceipts} startIcon={<ListAltIcon />}>
           Refresh
@@ -296,33 +304,93 @@ const [duplicatePair, setDuplicatePair] = useState(null);
           </Button>
         </Paper>
       ) : (
-        <Grid container spacing={2}>
-          {receipts.map((receipt) => (
-            <Grid item xs={12} key={receipt.id}>
-              <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={8}>
-                    <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>
+        <Paper elevation={2} sx={{ borderRadius: 2, overflow: "hidden" }}>
+          <Table>
+            <TableHead>
+              <TableRow sx={{ backgroundColor: theme.palette.mode === "dark" ? "#1e1e1e" : "#f5f5f5" }}>
+                <TableCell sx={{ fontWeight: "bold" }}>ID</TableCell>
+                <TableCell sx={{ fontWeight: "bold" }}>Merchant</TableCell>
+                <TableCell sx={{ fontWeight: "bold" }}>Date</TableCell>
+                <TableCell sx={{ fontWeight: "bold" }}>Total</TableCell>
+                <TableCell sx={{ fontWeight: "bold" }}>Category</TableCell>
+                <TableCell sx={{ fontWeight: "bold" }}>Payment</TableCell>
+                <TableCell sx={{ fontWeight: "bold" }}>Status</TableCell>
+                <TableCell sx={{ fontWeight: "bold" }}>Flags</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {receipts.map((receipt) => (
+                <TableRow 
+                  key={receipt.id}
+                  sx={{ 
+                    "&:hover": { backgroundColor: theme.palette.mode === "dark" ? "#2a2a2a" : "#fafafa" },
+                    backgroundColor: receipt.is_duplicate ? "rgba(255, 152, 0, 0.1)" : "transparent"
+                  }}
+                >
+                  <TableCell>{receipt.id}</TableCell>
+                  <TableCell>
+                    <Typography variant="body2" sx={{ fontWeight: "bold" }}>
                       {receipt.merchant}
                     </Typography>
-                    <Stack direction="row" spacing={3}>
-                      <Typography variant="body2">Date: {receipt.date}</Typography>
-                      <Typography variant="body2">Total: {receipt.total}</Typography>
-                      <Typography variant="body2">Category: {receipt.category}</Typography>
-                    </Stack>
-                  </Grid>
-                  <Grid item xs={12} md={4} sx={{ display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
-                    {receipt.duplicate && (
-                      <Typography variant="body2" sx={{ color: "orange", fontWeight: "bold" }}>
+                    {receipt.gst_number && (
+                      <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                        GST: {receipt.gst_number}
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>{receipt.receipt_date || "N/A"}</TableCell>
+                  <TableCell sx={{ fontWeight: "bold" }}>₹{receipt.total}</TableCell>
+                  <TableCell>
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        px: 1.5, 
+                        py: 0.5, 
+                        borderRadius: 1, 
+                        backgroundColor: "#e3f2fd",
+                        color: "#1976d2",
+                        display: "inline-block",
+                        fontSize: "0.75rem"
+                      }}
+                    >
+                      {receipt.category}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>{receipt.payment_method || "N/A"}</TableCell>
+                  <TableCell>
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        px: 1.5, 
+                        py: 0.5, 
+                        borderRadius: 1, 
+                        backgroundColor: receipt.status === "approved" ? "#e8f5e9" : receipt.status === "rejected" ? "#ffebee" : "#fff3e0",
+                        color: receipt.status === "approved" ? "#2e7d32" : receipt.status === "rejected" ? "#c62828" : "#f57c00",
+                        display: "inline-block",
+                        fontSize: "0.75rem",
+                        fontWeight: "bold"
+                      }}
+                    >
+                      {receipt.status || "pending"}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    {receipt.is_duplicate && (
+                      <Typography variant="body2" sx={{ color: "orange", fontWeight: "bold", mb: 0.5 }}>
                         ⚠️ Duplicate
                       </Typography>
                     )}
-                  </Grid>
-                </Grid>
-              </Paper>
-            </Grid>
-          ))}
-        </Grid>
+                    {receipt.fraud_flags && receipt.fraud_flags.length > 0 && (
+                      <Typography variant="caption" sx={{ color: "error.main" }}>
+                        {receipt.fraud_flags.join(", ")}
+                      </Typography>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Paper>
       )}
     </Box>
   );
@@ -451,8 +519,8 @@ const [duplicatePair, setDuplicatePair] = useState(null);
                   Total: result.total,
                   Category: result.category,
                   Payment: result.payment_method,
-                  Duplicate: result.duplicate ? "Yes" : "No",
-                  Fraud_Flags: (result.fraud_flags || []).join(", ")
+                  Duplicate: duplicateInfo?.duplicate ? "Yes" : "No",
+                  "Validation Flags": (result.fraud_flags || []).join(", ")
                 }).map(([k, v]) => (
                   <TableRow key={k}>
                     <TableCell sx={{ fontWeight: 600 }}>{k}</TableCell>
@@ -464,15 +532,31 @@ const [duplicatePair, setDuplicatePair] = useState(null);
           </Paper>
  
           <Typography variant="h5">Raw OCR Text</Typography>
-          <Paper sx={{ p: 2, mt: 1 }}>
-            <pre style={{ whiteSpace: "pre-wrap" }}>{result.raw_text}</pre>
+          <Paper sx={{ p: 3, mt: 1, backgroundColor: theme.palette.mode === "dark" ? "#1e1e1e" : "#f9f9f9" }}>
+            <pre style={{ 
+              whiteSpace: "pre-wrap", 
+              fontFamily: "monospace",
+              fontSize: "14px",
+              lineHeight: "1.6",
+              margin: 0,
+              color: theme.palette.text.primary
+            }}>
+              {result.raw_text}
+            </pre>
           </Paper>
  
-          <Typography variant="h5" sx={{ mt: 2 }}>
+          <Typography variant="h5" sx={{ mt: 3 }}>
             DeepSeek Output
           </Typography>
-          <Paper sx={{ p: 2, mt: 1 }}>
-            <pre style={{ whiteSpace: "pre-wrap" }}>
+          <Paper sx={{ p: 3, mt: 1, backgroundColor: theme.palette.mode === "dark" ? "#1e1e1e" : "#f9f9f9" }}>
+            <pre style={{ 
+              whiteSpace: "pre-wrap", 
+              fontFamily: "monospace",
+              fontSize: "14px",
+              lineHeight: "1.6",
+              margin: 0,
+              color: theme.palette.text.primary
+            }}>
               {JSON.stringify(result.deepseek_raw, null, 2)}
             </pre>
           </Paper>
