@@ -175,23 +175,15 @@ const [duplicatePair, setDuplicatePair] = useState(null);
       console.log("Duplicate_of:", res.data.duplicate_of);
       console.log("Receipt ID:", res.data.id);
       
-      // Store duplicate metadata
+      // Store duplicate metadata (including pending_data for approval)
       setDuplicateInfo({
         duplicate: res.data.duplicate,
         duplicate_of: res.data.duplicate_of,
-        status: res.data.status
+        status: res.data.status,
+        pending_data: res.data.pending_data // Store pending data for later approval
       });
       
-      if (res.data.duplicate && res.data.duplicate_of) {
-        console.log("Fetching duplicate pair for ID:", res.data.id);
-        const pair = await axios.get(
-          `http://localhost:8000/duplicate-pair/${res.data.id}`
-        );
-        console.log("Duplicate pair data:", pair.data);
-        setDuplicatePair(pair.data);
-      }
- 
-      // If duplicate fetch original receipt
+      // If duplicate, fetch original receipt for comparison
       if (res.data.duplicate && res.data.duplicate_of) {
         const orig = await axios.get(`http://localhost:8000/receipt/${res.data.duplicate_of}`);
         setOriginal(orig.data.result);
@@ -206,6 +198,28 @@ const [duplicatePair, setDuplicatePair] = useState(null);
  
   // ---------------------- Admin Approve / Reject -----------------------
  const approveDuplicate = async () => {
+  // For pending duplicates (not yet in DB)
+  if (duplicateInfo?.pending_data) {
+    try {
+      const res = await axios.post(`http://localhost:8000/approve-pending`, duplicateInfo.pending_data);
+      setDialogMessage(res.data.message || "Duplicate receipt sent for admin review!");
+      setDialogType("success");
+      setDialogOpen(true);
+      
+      // Clear duplicate-related UI
+      setDuplicateInfo(null);
+      setOriginal(null);
+      setResult(null);
+      setFile(null);
+    } catch (err) {
+      setDialogMessage("Error approving receipt: " + (err.response?.data?.detail || err.message));
+      setDialogType("error");
+      setDialogOpen(true);
+    }
+    return;
+  }
+
+  // For receipts already in DB
   if (!currentReceiptId) {
     setDialogMessage("No receipt ID found.");
     setDialogType("error");
@@ -230,25 +244,20 @@ const [duplicatePair, setDuplicatePair] = useState(null);
 };
  
  
- const rejectDuplicate = async () => {
-  if (!currentReceiptId) {
-    setDialogMessage("No receipt ID found.");
-    setDialogType("error");
-    setDialogOpen(true);
-    return;
-  }
- 
+ const cancelDuplicate = async () => {
   try {
-    const res = await axios.post(`http://localhost:8000/reject/${currentReceiptId}`);
-    setDialogMessage(res.data.message || "Receipt rejected as fraud!");
-    setDialogType("error");
+    const res = await axios.post(`http://localhost:8000/cancel-pending`);
+    setDialogMessage(res.data.message || "Duplicate receipt cancelled!");
+    setDialogType("success");
     setDialogOpen(true);
     
-    // Clear duplicate-related UI
+    // Clear all UI
     setDuplicateInfo(null);
-    setDuplicatePair(null);
+    setOriginal(null);
+    setResult(null);
+    setFile(null);
   } catch (err) {
-    setDialogMessage("Error rejecting receipt: " + (err.response?.data?.detail || err.message));
+    setDialogMessage("Error cancelling receipt: " + (err.response?.data?.detail || err.message));
     setDialogType("error");
     setDialogOpen(true);
   }
@@ -855,34 +864,46 @@ const [duplicatePair, setDuplicatePair] = useState(null);
           elevation={2}
           sx={{
             backgroundColor: "#fff3cd",
-            p: 2,
+            p: 3,
             mb: 2,
             borderRadius: 2,
-            border: "1px solid #ffc107",
+            border: "2px solid #ffc107",
             textAlign: "center"
           }}
         >
-          <Typography variant="h6" sx={{ color: "orange" }}>
-            ⚠️ Duplicate Receipt Detected — Requires Admin Review
+          <Typography variant="h6" sx={{ color: "#f57c00", fontWeight: "bold", mb: 1 }}>
+            ⚠️ Duplicate Receipt Detected
           </Typography>
  
-          <Typography sx={{ mt: 1 }}>
-            This seems similar to receipt ID: <b>{duplicateInfo.duplicate_of}</b>
+          <Typography sx={{ mt: 1, mb: 2 }}>
+            This receipt is similar to receipt ID: <b>{duplicateInfo.duplicate_of}</b>
           </Typography>
+
+          <Typography variant="body2" sx={{ color: "text.secondary", mb: 3 }}>
+            This receipt has not been stored in the database. Choose an action below:
+          </Typography>
+ 
+          {/* Admin Action Buttons */}
+          <Stack direction="row" spacing={2} justifyContent="center">
+            <Button 
+              variant="contained" 
+              color="success" 
+              onClick={approveDuplicate}
+              size="large"
+            >
+              Send for Admin Approval
+            </Button>
+ 
+            <Button 
+              variant="outlined" 
+              color="error" 
+              onClick={cancelDuplicate}
+              size="large"
+            >
+              Cancel
+            </Button>
+          </Stack>
         </Paper>
-      )}
- 
-      {/* Admin Action Buttons */}
-      {duplicateInfo?.duplicate && (
-        <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
-          <Button variant="contained" color="success" onClick={approveDuplicate}>
-            Approve Duplicate
-          </Button>
- 
-          <Button variant="contained" color="error" onClick={rejectDuplicate}>
-            Reject as Fraud
-          </Button>
-        </Stack>
       )}
  
 
@@ -983,32 +1004,33 @@ const [duplicatePair, setDuplicatePair] = useState(null);
         </Paper>
       )}
  
-      {duplicatePair && (
-        <Paper elevation={2} sx={{ mt: 3, p: 3, borderRadius: 2 }}>
-          <Typography variant="h4" sx={{ mb: 2, fontWeight: "bold" }}>
-            🔍 Duplicate Receipt Review
+      {/* Show comparison when duplicate detected */}
+      {duplicateInfo?.duplicate && original && result && (
+        <Paper elevation={2} sx={{ mt: 3, p: 3, borderRadius: 2, border: "2px solid #ffc107" }}>
+          <Typography variant="h5" sx={{ mb: 3, fontWeight: "bold", color: "#f57c00" }}>
+            🔍 Compare Receipts
           </Typography>
  
           <Grid container spacing={3}>
-            {/* Original */}
+            {/* Original Receipt */}
             <Grid item xs={12} md={6}>
-              <Paper sx={{ p: 2 }}>
-                <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>
-                  Original Receipt (ID: {duplicatePair.original.id})
+              <Paper sx={{ p: 3, backgroundColor: "#e8f5e9", border: "2px solid #4caf50" }}>
+                <Typography variant="h6" sx={{ fontWeight: "bold", mb: 2, color: "#2e7d32" }}>
+                  ✓ Original Receipt (ID: {original.id})
                 </Typography>
-                <Table>
+                <Table size="small">
                   <TableBody>
                     {Object.entries({
-                      Merchant: duplicatePair.original.merchant,
-                      Date: duplicatePair.original.date,
-                      Total: duplicatePair.original.total,
-                      Category: duplicatePair.original.category,
-                      "Payment Method": duplicatePair.original.payment_method,
-                      Flags: duplicatePair.original.fraud_flags
+                      Merchant: original.merchant,
+                      Date: original.date,
+                      Total: `₹${original.total}`,
+                      Category: original.category,
+                      Payment: original.payment_method,
+                      Status: original.status
                     }).map(([k, v]) => (
                       <TableRow key={k}>
-                        <TableCell sx={{ fontWeight: 600 }}>{k}</TableCell>
-                        <TableCell>{v}</TableCell>
+                        <TableCell sx={{ fontWeight: 600, borderBottom: "1px solid #c8e6c9" }}>{k}</TableCell>
+                        <TableCell sx={{ borderBottom: "1px solid #c8e6c9" }}>{v || "N/A"}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -1016,25 +1038,25 @@ const [duplicatePair, setDuplicatePair] = useState(null);
               </Paper>
             </Grid>
  
-            {/* Duplicate */}
+            {/* New Duplicate Receipt */}
             <Grid item xs={12} md={6}>
-              <Paper sx={{ p: 2 }}>
-                <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>
-                  Duplicate Receipt (ID: {duplicatePair.duplicate.id})
+              <Paper sx={{ p: 3, backgroundColor: "#fff3e0", border: "2px solid #ff9800" }}>
+                <Typography variant="h6" sx={{ fontWeight: "bold", mb: 2, color: "#f57c00" }}>
+                  ⚠️ New Receipt (Duplicate)
                 </Typography>
-                <Table>
+                <Table size="small">
                   <TableBody>
                     {Object.entries({
-                      Merchant: duplicatePair.duplicate.merchant,
-                      Date: duplicatePair.duplicate.date,
-                      Total: duplicatePair.duplicate.total,
-                      Category: duplicatePair.duplicate.category,
-                      "Payment Method": duplicatePair.duplicate.payment_method,
-                      Flags: duplicatePair.duplicate.fraud_flags
+                      Merchant: result.merchant,
+                      Date: result.date,
+                      Total: result.total,
+                      Category: result.category,
+                      Payment: result.payment_method,
+                      Status: "Not Stored"
                     }).map(([k, v]) => (
                       <TableRow key={k}>
-                        <TableCell sx={{ fontWeight: 600 }}>{k}</TableCell>
-                        <TableCell>{v}</TableCell>
+                        <TableCell sx={{ fontWeight: 600, borderBottom: "1px solid #ffe0b2" }}>{k}</TableCell>
+                        <TableCell sx={{ borderBottom: "1px solid #ffe0b2" }}>{v || "N/A"}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
